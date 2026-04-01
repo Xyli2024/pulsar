@@ -64,7 +64,7 @@ pulsar --disco
 
 | Name | Role |
 |---|---|
-| [xyli2024](https://github.com/Xyli2024) | Author |
+| [Xyli2024](https://github.com/Xyli2024) | Author |
 | [Claude (Anthropic)](https://www.anthropic.com/claude) | AI Assistant |
 
 ## License
