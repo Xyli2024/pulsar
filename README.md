@@ -1,4 +1,4 @@
-# pulsar
+# Pulsar
 
 A live, terminal-native hardware dashboard for developers and researchers who run heavy computations and don't want to leave the terminal.
 
