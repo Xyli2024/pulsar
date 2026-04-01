@@ -10,8 +10,6 @@ A live, terminal-native hardware dashboard for developers and researchers who ru
 - **Top processes** — ranked by CPU%, showing PID, name, CPU%, and memory
 - **`--once --format json`** — machine-readable snapshot for logging and scripting
 - **Disco mode** (`--disco`) — every element cycles through random colors on each refresh
-- **Fireworks Mode** — press `s` during the live dashboard, or triggers automatically when a core hits 100% for 5+ seconds
-- **Uptime milestones** — quiet messages at 5 / 15 / 30 / 42 / 60 minutes
 
 ## Installation
 
