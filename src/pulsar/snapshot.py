@@ -25,20 +25,26 @@ def print_table(info: SystemInfo, snap: Snapshot) -> None:
     console.print()
 
     # CPU table
+    has_freq = len(snap.cpu_freq_per_core) == len(snap.cpu_per_core)
     cpu_table = Table(title="CPU per Core", show_header=True)
     cpu_table.add_column("Core", style="dim", width=6)
     cpu_table.add_column("Load", width=30)
     cpu_table.add_column("  %", justify="right", width=6)
+    if has_freq:
+        cpu_table.add_column("Freq", justify="right", width=9)
 
     for i, pct in enumerate(snap.cpu_per_core):
         bar = _bar(pct)
         color = _color(pct)
-        cpu_table.add_row(
-            str(i),
-            f"[{color}]{bar}[/{color}]",
-            f"[{color}]{pct}%[/{color}]",
-        )
-    cpu_table.add_row("avg", _bar(snap.cpu_avg), f"{snap.cpu_avg}%", style="bold")
+        row = [str(i), f"[{color}]{bar}[/{color}]", f"[{color}]{pct}%[/{color}]"]
+        if has_freq:
+            row.append(f"{snap.cpu_freq_per_core[i]:.2f} GHz")
+        cpu_table.add_row(*row)
+
+    avg_row = ["avg", _bar(snap.cpu_avg), f"{snap.cpu_avg}%"]
+    if has_freq:
+        avg_row.append("")
+    cpu_table.add_row(*avg_row, style="bold")
     console.print(cpu_table)
 
     # Memory + Disk
@@ -51,6 +57,10 @@ def print_table(info: SystemInfo, snap: Snapshot) -> None:
     console.print(
         f"[bold]Disk I/O:[/bold]  "
         f"Read {snap.disk_read_mbps} MB/s  •  Write {snap.disk_write_mbps} MB/s"
+    )
+    console.print(
+        f"[bold]Network I/O:[/bold]  "
+        f"↓ Recv {snap.net_recv_mbps} MB/s  •  ↑ Sent {snap.net_sent_mbps} MB/s"
     )
     console.print()
 
@@ -86,6 +96,7 @@ def print_json(info: SystemInfo, snap: Snapshot) -> None:
         "cpu": {
             "per_core_percent": snap.cpu_per_core,
             "avg_percent": snap.cpu_avg,
+            "per_core_freq_ghz": snap.cpu_freq_per_core,
         },
         "memory": {
             "used_gb": snap.mem_used,
@@ -95,6 +106,10 @@ def print_json(info: SystemInfo, snap: Snapshot) -> None:
         "disk_io": {
             "read_mbps": snap.disk_read_mbps,
             "write_mbps": snap.disk_write_mbps,
+        },
+        "net_io": {
+            "recv_mbps": snap.net_recv_mbps,
+            "sent_mbps": snap.net_sent_mbps,
         },
         "top_processes": snap.top_procs,
     }

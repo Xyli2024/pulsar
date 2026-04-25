@@ -33,6 +33,9 @@ class Snapshot:
     mem_percent: float                 # percent
     disk_read_mbps: float
     disk_write_mbps: float
+    net_recv_mbps: float               # MB/s received across all interfaces
+    net_sent_mbps: float               # MB/s sent across all interfaces
+    cpu_freq_per_core: list[float]     # current freq per logical core (GHz); [] if unavailable
     top_procs: list[dict]              # list of {pid, name, cpu, mem_mb}
     timestamp: float = field(default_factory=time.time)
 
@@ -100,19 +103,35 @@ def get_system_info() -> SystemInfo:
 # Live snapshot
 # ---------------------------------------------------------------------------
 
-# Module-level state for disk I/O delta calculation
+# Module-level state for I/O delta calculations
 _last_disk_io = None
 _last_disk_time = None
+_last_net_io = None
+_last_net_time = None
 
 
 def collect(top_n: int = 5, proc_filter: list[str] | None = None) -> Snapshot:
     """Collect one live snapshot of all hardware metrics."""
-    global _last_disk_io, _last_disk_time
+    global _last_disk_io, _last_disk_time, _last_net_io, _last_net_time
 
     # CPU — interval=None for non-blocking read;
     # first call after startup may return 0.0, which is expected
     cpu_per_core = psutil.cpu_percent(percpu=True, interval=None)
     cpu_avg = round(sum(cpu_per_core) / len(cpu_per_core), 1)
+
+    # CPU frequency per core (GHz); pad/truncate to match core count
+    try:
+        raw_freqs = psutil.cpu_freq(percpu=True)
+        if raw_freqs:
+            cpu_freq_per_core = [round(f.current / 1000, 2) for f in raw_freqs]
+            n = len(cpu_per_core)
+            if len(cpu_freq_per_core) < n:
+                cpu_freq_per_core += [cpu_freq_per_core[-1]] * (n - len(cpu_freq_per_core))
+            cpu_freq_per_core = cpu_freq_per_core[:n]
+        else:
+            cpu_freq_per_core = []
+    except Exception:
+        cpu_freq_per_core = []
 
     # Memory
     mem = psutil.virtual_memory()
@@ -133,6 +152,20 @@ def collect(top_n: int = 5, proc_filter: list[str] | None = None) -> Snapshot:
         write_mbps = 0.0
     _last_disk_io = disk_io
     _last_disk_time = now
+
+    # Network I/O — aggregate across all interfaces
+    net_io = psutil.net_io_counters()
+    if _last_net_io is not None and net_io is not None:
+        dt_net = now - _last_net_time
+        recv_mbps = round((net_io.bytes_recv - _last_net_io.bytes_recv) / 1e6 / dt_net, 2)
+        sent_mbps = round((net_io.bytes_sent - _last_net_io.bytes_sent) / 1e6 / dt_net, 2)
+        recv_mbps = max(recv_mbps, 0.0)
+        sent_mbps = max(sent_mbps, 0.0)
+    else:
+        recv_mbps = 0.0
+        sent_mbps = 0.0
+    _last_net_io = net_io
+    _last_net_time = now
 
     # Top processes
     procs = []
@@ -162,5 +195,8 @@ def collect(top_n: int = 5, proc_filter: list[str] | None = None) -> Snapshot:
         mem_percent=round(mem.percent, 1),
         disk_read_mbps=read_mbps,
         disk_write_mbps=write_mbps,
+        net_recv_mbps=recv_mbps,
+        net_sent_mbps=sent_mbps,
+        cpu_freq_per_core=cpu_freq_per_core,
         top_procs=procs[:top_n],
     )

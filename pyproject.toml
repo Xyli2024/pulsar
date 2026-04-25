@@ -9,7 +9,7 @@ description = "A live, terminal-native hardware dashboard for developers and res
 readme = "README.md"
 license = {text = "MIT"}
 authors = [
-    {name = "Xyli2024"}
+    {name = "Xinyu Li", email = "xinyul6@andrew.cmu.edu"}
 ]
 requires-python = ">=3.10"
 dependencies = [

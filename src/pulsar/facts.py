@@ -1,0 +1,689 @@
+"""facts.py — rotating fun-fact library for the dashboard footer.
+
+Local library: 500+ facts across 20+ categories.
+Online supplement: Wikipedia On This Day + uselessfacts.jsph.pl (background thread).
+"""
+
+import json
+import random
+import threading
+from datetime import datetime
+from urllib.request import urlopen, Request
+
+# ---------------------------------------------------------------------------
+# Local fact library  (500 entries)
+# ---------------------------------------------------------------------------
+
+_LOCAL_FACTS: list[dict] = [
+    # ── CS History ────────────────────────────────────────────────────────
+    {"tag": "CS History", "color": "cyan", "text": "The first computer bug was an actual moth found in a Harvard Mark II relay in 1947 — taped into the logbook by Grace Hopper's team."},
+    {"tag": "CS History", "color": "cyan", "text": "Python is named after Monty Python's Flying Circus, not the snake. Guido van Rossum wanted a short, unique name."},
+    {"tag": "CS History", "color": "cyan", "text": "Linux was announced in 1991 by Linus Torvalds as 'just a hobby, won't be big and professional.'"},
+    {"tag": "CS History", "color": "cyan", "text": "The '@' symbol was chosen for email addresses by Ray Tomlinson in 1971 because it rarely appeared in names."},
+    {"tag": "CS History", "color": "cyan", "text": "The first website is still online at info.cern.ch — created by Tim Berners-Lee in 1991."},
+    {"tag": "CS History", "color": "cyan", "text": "Git was created by Linus Torvalds in just 10 days in April 2005, after a licensing dispute over BitKeeper."},
+    {"tag": "CS History", "color": "cyan", "text": "Ada Lovelace wrote the first algorithm intended for a machine in 1843 — for Babbage's Analytical Engine that was never built."},
+    {"tag": "CS History", "color": "cyan", "text": "ENIAC (1945) weighed 30 tons, consumed 150 kW of power, and contained 18,000 vacuum tubes."},
+    {"tag": "CS History", "color": "cyan", "text": "The first computer password was introduced at MIT's CTSS time-sharing system in 1961."},
+    {"tag": "CS History", "color": "cyan", "text": "JavaScript was created by Brendan Eich in just 10 days in 1995. It was originally called Mocha, then LiveScript."},
+    {"tag": "CS History", "color": "cyan", "text": "The first email was sent by Ray Tomlinson to himself in 1971. He later admitted he can't remember what it said."},
+    {"tag": "CS History", "color": "cyan", "text": "Google was originally called 'BackRub' when Larry Page and Sergey Brin were researching it at Stanford."},
+    {"tag": "CS History", "color": "cyan", "text": "The term 'open source' was coined in February 1998 by Christine Peterson at a strategy session in Palo Alto."},
+    {"tag": "CS History", "color": "cyan", "text": "The QWERTY keyboard layout was designed in the 1870s for mechanical typewriters to reduce jamming of adjacent keys."},
+    {"tag": "CS History", "color": "cyan", "text": "The first computer mouse was invented by Doug Engelbart in 1964 — it was made of wood with two metal wheels."},
+    {"tag": "CS History", "color": "cyan", "text": "Bluetooth is named after Harald Bluetooth, a 10th-century Danish king who united Scandinavian tribes — mirroring the tech's goal of uniting protocols."},
+    {"tag": "CS History", "color": "cyan", "text": "The Apollo 11 guidance computer had 4 KB of RAM and 32 KB of storage — your email attachment is probably larger."},
+    {"tag": "CS History", "color": "cyan", "text": "TCP/IP, the foundation of the internet, was developed by Vint Cerf and Bob Kahn in 1974."},
+    {"tag": "CS History", "color": "cyan", "text": "The first GB hard drive (IBM 3380, 1980) cost $40,000 and weighed 550 lbs."},
+    {"tag": "CS History", "color": "cyan", "text": "The term 'byte' was coined by Werner Buchholz in 1956 — deliberately misspelled to avoid confusion with 'bit'."},
+    {"tag": "CS History", "color": "cyan", "text": "COBOL, designed with Grace Hopper's input in 1959, still runs trillions of dollars in banking transactions daily."},
+    {"tag": "CS History", "color": "cyan", "text": "The first domain name ever registered was symbolics.com on March 15, 1985."},
+    {"tag": "CS History", "color": "cyan", "text": "Claude Shannon's 1948 paper 'A Mathematical Theory of Communication' invented information theory in a single stroke."},
+    {"tag": "CS History", "color": "cyan", "text": "The first message sent over ARPANET (predecessor to the internet) was 'lo' — the system crashed after just two characters."},
+    {"tag": "CS History", "color": "cyan", "text": "The first transistor was invented at Bell Labs on December 23, 1947, by Bardeen, Brattain, and Shockley."},
+    {"tag": "CS History", "color": "cyan", "text": "Wikipedia was launched on January 15, 2001, and now contains over 60 million articles in 300+ languages."},
+    {"tag": "CS History", "color": "cyan", "text": "The Commodore 64 (1982) sold over 17 million units — one of the best-selling personal computers of all time."},
+    {"tag": "CS History", "color": "cyan", "text": "Amazon started as an online bookstore run from Jeff Bezos's garage in Bellevue, Washington in 1994."},
+    {"tag": "CS History", "color": "cyan", "text": "The first computer game commercially sold was Computer Space (1971) — it predated Pong by over a year."},
+    {"tag": "CS History", "color": "cyan", "text": "'Hello, World!' as a first program tradition dates to Brian Kernighan's 1972 internal Bell Labs tutorial on B."},
+
+    # ── Hardware ─────────────────────────────────────────────────────────
+    {"tag": "Hardware", "color": "bright_blue", "text": "A modern CPU transistor is so small that hundreds of thousands fit within the width of a single human hair."},
+    {"tag": "Hardware", "color": "bright_blue", "text": "The first Intel microprocessor, the 4004 (1971), had 2,300 transistors. A modern M-series chip has 100+ billion."},
+    {"tag": "Hardware", "color": "bright_blue", "text": "NVMe SSDs can read data at over 7,000 MB/s — roughly 14× faster than the fastest spinning hard drive."},
+    {"tag": "Hardware", "color": "bright_blue", "text": "Cache memory sits 100× closer to the CPU than RAM and is ~100× faster. L1 cache latency is under 1 nanosecond."},
+    {"tag": "Hardware", "color": "bright_blue", "text": "DDR5 RAM can transfer data at up to 51.2 GB/s — compared to 3.2 GB/s for the original DDR1 standard."},
+    {"tag": "Hardware", "color": "bright_blue", "text": "CPU clock speeds have largely stagnated since ~2005. Modern performance gains come from parallelism and efficiency, not raw frequency."},
+    {"tag": "Hardware", "color": "bright_blue", "text": "A GPU can have over 10,000 shader cores — designed for massively parallel math, not sequential logic like a CPU."},
+    {"tag": "Hardware", "color": "bright_blue", "text": "DRAM cells lose their charge and must be refreshed thousands of times per second, or data is permanently lost."},
+    {"tag": "Hardware", "color": "bright_blue", "text": "Hard drives spin platters at 7,200 RPM — that's 120 complete rotations every second."},
+    {"tag": "Hardware", "color": "bright_blue", "text": "USB 4.0 supports speeds up to 40 Gbps — equivalent to transferring a full Blu-ray disc in about one second."},
+    {"tag": "Hardware", "color": "bright_blue", "text": "The humble GPU, originally designed to render 3D games, now powers almost every major AI and machine learning workload."},
+    {"tag": "Hardware", "color": "bright_blue", "text": "PCIe 5.0 slots can transfer data at 64 GB/s — enough to fill a 1 TB SSD in under 16 seconds."},
+    {"tag": "Hardware", "color": "bright_blue", "text": "ECC RAM detects and corrects single-bit memory errors automatically — essential for servers and scientific computing."},
+    {"tag": "Hardware", "color": "bright_blue", "text": "The first USB flash drive held 8 MB — released by Trek Technology in 2000 for $50."},
+    {"tag": "Hardware", "color": "bright_blue", "text": "Frontier (2022), the world's first exascale supercomputer, can perform 1.1×10¹⁸ calculations per second."},
+    {"tag": "Hardware", "color": "bright_blue", "text": "The Intel 8086 processor (1978) is the direct ancestor of every x86/x64 CPU used in PCs and servers today."},
+    {"tag": "Hardware", "color": "bright_blue", "text": "The first PlayStation (1994) had 2 MB of RAM and a 33 MHz CPU — a modern smartphone is over a million times more powerful."},
+    {"tag": "Hardware", "color": "bright_blue", "text": "Moore's Law is now extended through 3D chip stacking (like HBM memory and chiplets) since 2D transistor scaling is slowing."},
+
+    # ── Software / Languages ─────────────────────────────────────────────
+    {"tag": "Software", "color": "green", "text": "There are over 700 documented programming languages — the vast majority are never used in production."},
+    {"tag": "Software", "color": "green", "text": "Ariane 5's 1996 explosion was caused by a single 64-to-16-bit integer overflow bug — destroying a €370M rocket."},
+    {"tag": "Software", "color": "green", "text": "The average developer spends about 35% of their time reading existing code, not writing new code."},
+    {"tag": "Software", "color": "green", "text": "NASA's Space Shuttle flight software had ~1 bug per 420,000 lines — considered one of the highest-quality codebases ever written."},
+    {"tag": "Software", "color": "green", "text": "The Linux kernel has over 27 million lines of code contributed by thousands of developers worldwide."},
+    {"tag": "Software", "color": "green", "text": "TypeScript was designed by Anders Hejlsberg — the same person who designed C# and Turbo Pascal."},
+    {"tag": "Software", "color": "green", "text": "The Y2K bug cost an estimated $300–600 billion to fix globally — one of the most expensive software issues in history."},
+    {"tag": "Software", "color": "green", "text": "Go (Golang) was created at Google partly because C++ compile times were too slow for Google's massive codebase."},
+    {"tag": "Software", "color": "green", "text": "Regular expressions were invented by mathematician Stephen Kleene in the 1950s as a notation for formal languages."},
+    {"tag": "Software", "color": "green", "text": "Rust has been voted the 'most loved programming language' in every Stack Overflow developer survey since 2016."},
+    {"tag": "Software", "color": "green", "text": "Git stores all data as a Merkle tree (directed acyclic graph of content-addressed blobs) — the same structure used in blockchains."},
+    {"tag": "Software", "color": "green", "text": "sed and awk first appeared in Unix Version 7 (1979) — they predate most developers' parents."},
+    {"tag": "Software", "color": "green", "text": "JSON was invented by Douglas Crockford in 2001 and is now the world's most common data interchange format."},
+    {"tag": "Software", "color": "green", "text": "The first version of Windows (1985) required DOS to run and couldn't overlap windows — that would've required more RAM."},
+    {"tag": "Software", "color": "green", "text": "The Internet Archive (archive.org) has preserved over 750 billion web pages since 1996 — the Wayback Machine of the internet."},
+
+    # ── Space / Astronomy ────────────────────────────────────────────────
+    {"tag": "Space", "color": "bright_magenta", "text": "A day on Venus (243 Earth days) is longer than a year on Venus (225 Earth days). It also rotates backwards."},
+    {"tag": "Space", "color": "bright_magenta", "text": "The footprints left on the Moon by Apollo astronauts will last millions of years — there's no wind or weather to erase them."},
+    {"tag": "Space", "color": "bright_magenta", "text": "Voyager 1, launched in 1977, is now over 23 billion km from Earth — the farthest human-made object ever."},
+    {"tag": "Space", "color": "bright_magenta", "text": "Light from the Sun takes 8 minutes and 20 seconds to reach Earth. If the Sun vanished, we wouldn't know for over 8 minutes."},
+    {"tag": "Space", "color": "bright_magenta", "text": "There are more stars in the observable universe than grains of sand on all of Earth's beaches combined."},
+    {"tag": "Space", "color": "bright_magenta", "text": "The Sun makes up 99.86% of the total mass of the entire Solar System."},
+    {"tag": "Space", "color": "bright_magenta", "text": "Saturn's rings are only 10–100 meters thick despite being up to 282,000 km in diameter — proportionally thinner than a sheet of paper."},
+    {"tag": "Space", "color": "bright_magenta", "text": "A neutron star can spin at 716 rotations per second — the fastest spinning solid objects in the known universe."},
+    {"tag": "Space", "color": "bright_magenta", "text": "The Moon is slowly moving away from Earth at ~3.8 cm per year — about the same rate your fingernails grow."},
+    {"tag": "Space", "color": "bright_magenta", "text": "Due to time dilation, astronauts on the ISS age slightly slower — roughly 0.007 seconds younger per 6-month mission."},
+    {"tag": "Space", "color": "bright_magenta", "text": "The Andromeda Galaxy is on a collision course with the Milky Way — expected to merge in about 4.5 billion years."},
+    {"tag": "Space", "color": "bright_magenta", "text": "Black holes evaporate over time through Hawking radiation. A stellar-mass black hole would take ~10⁶⁷ years to evaporate."},
+    {"tag": "Space", "color": "bright_magenta", "text": "Mars has the tallest volcano in the Solar System: Olympus Mons, standing 21.9 km — nearly 3× the height of Everest."},
+    {"tag": "Space", "color": "bright_magenta", "text": "Jupiter's Great Red Spot is a storm that has been raging for at least 350 years and is currently shrinking."},
+    {"tag": "Space", "color": "bright_magenta", "text": "If you removed all the empty space from atoms in all humans, the entire human race would fit in a sugar cube."},
+    {"tag": "Space", "color": "bright_magenta", "text": "The universe is approximately 13.8 billion years old. The Solar System formed 4.6 billion years ago — about 1/3 of the universe's age."},
+    {"tag": "Space", "color": "bright_magenta", "text": "Europa, a moon of Jupiter, likely has a liquid saltwater ocean beneath its ice — making it a candidate for extraterrestrial life."},
+    {"tag": "Space", "color": "bright_magenta", "text": "The International Space Station travels at ~7.66 km/s, completing one orbit of Earth every ~92 minutes."},
+    {"tag": "Space", "color": "bright_magenta", "text": "A day on Mars is 24 hours and 37 minutes — so close to Earth's that early Mars mission teams used local Martian time."},
+    {"tag": "Space", "color": "bright_magenta", "text": "The Sun completes one orbit around the center of the Milky Way every ~225 million years — called a 'cosmic year.'"},
+
+    # ── Physics ───────────────────────────────────────────────────────────
+    {"tag": "Physics", "color": "yellow", "text": "A photon of light experiences no time — from its own reference frame, it arrives at its destination instantaneously."},
+    {"tag": "Physics", "color": "yellow", "text": "The Higgs boson was predicted in 1964 and experimentally confirmed in 2012 at CERN, 48 years later."},
+    {"tag": "Physics", "color": "yellow", "text": "The speed of light is exactly 299,792,458 m/s — not approximately. The meter is now defined by this constant."},
+    {"tag": "Physics", "color": "yellow", "text": "Neutron stars are so dense that a teaspoon of neutron star material would weigh about 10 million tonnes on Earth."},
+    {"tag": "Physics", "color": "yellow", "text": "Water is one of the only substances that expands when it freezes — which is why ice floats and pipes burst in winter."},
+    {"tag": "Physics", "color": "yellow", "text": "A bolt of lightning is approximately 5× hotter than the surface of the Sun — around 30,000 Kelvin."},
+    {"tag": "Physics", "color": "yellow", "text": "Time passes slightly faster at higher altitudes due to gravitational time dilation — GPS satellites must correct for this."},
+    {"tag": "Physics", "color": "yellow", "text": "Dark matter and dark energy together make up ~95% of the universe. Everything we can see is just ~5%."},
+    {"tag": "Physics", "color": "yellow", "text": "Quantum tunneling allows particles to pass through energy barriers — it's why nuclear fusion in the Sun is possible."},
+    {"tag": "Physics", "color": "yellow", "text": "Absolute zero (−273.15°C / 0 K) is theoretically unreachable — you can approach it asymptotically but never quite get there."},
+    {"tag": "Physics", "color": "yellow", "text": "Superfluid helium (below 2.17 K) flows upward along container walls against gravity — it defies classical fluid mechanics."},
+    {"tag": "Physics", "color": "yellow", "text": "The double-slit experiment shows particles create interference patterns even when fired one at a time — one of quantum mechanics' deepest mysteries."},
+    {"tag": "Physics", "color": "yellow", "text": "Sound travels ~343 m/s in air, but over 5,100 m/s in steel — about 15 times faster."},
+    {"tag": "Physics", "color": "yellow", "text": "The Standard Model describes 17 fundamental particles — and its predictions have been verified to over 10 decimal places of precision."},
+    {"tag": "Physics", "color": "yellow", "text": "Every atom in your body heavier than hydrogen was forged in a star. You are literally made of stardust."},
+
+    # ── Biology / Nature ─────────────────────────────────────────────────
+    {"tag": "Biology", "color": "bright_green", "text": "Honey never spoils — archaeologists found 3,000-year-old honey in Egyptian tombs that was still perfectly edible."},
+    {"tag": "Biology", "color": "bright_green", "text": "Octopuses have three hearts, nine brains (one central, one per arm), and blue, copper-based blood."},
+    {"tag": "Biology", "color": "bright_green", "text": "Bananas are technically berries. Strawberries, raspberries, and blackberries are not — botanically speaking."},
+    {"tag": "Biology", "color": "bright_green", "text": "Tardigrades (water bears) can survive in the vacuum of space, intense radiation, and temperatures from −272°C to +150°C."},
+    {"tag": "Biology", "color": "bright_green", "text": "The mantis shrimp has 16 types of photoreceptors — humans have only 3. It can see colors we can't even imagine."},
+    {"tag": "Biology", "color": "bright_green", "text": "Trees in a forest share nutrients and chemical distress signals through underground fungal networks — the 'wood wide web.'"},
+    {"tag": "Biology", "color": "bright_green", "text": "The axolotl can regenerate its limbs, spinal cord, heart, and even parts of its brain throughout its lifetime."},
+    {"tag": "Biology", "color": "bright_green", "text": "Butterflies taste with their feet — chemoreceptors on their tarsi detect sugar and salt before they even land."},
+    {"tag": "Biology", "color": "bright_green", "text": "The immortal jellyfish (Turritopsis dohrnii) can revert to its juvenile polyp stage after reaching adulthood — potentially living forever."},
+    {"tag": "Biology", "color": "bright_green", "text": "Crows can recognize individual human faces, hold grudges for years, and pass this knowledge to their offspring."},
+    {"tag": "Biology", "color": "bright_green", "text": "The wood frog of North America freezes solid in winter — heart stopped, no brain activity — then thaws and hops away in spring."},
+    {"tag": "Biology", "color": "bright_green", "text": "Dolphins have unique signature whistles that function as individual names, and they use other dolphins' 'names' to address them directly."},
+    {"tag": "Biology", "color": "bright_green", "text": "A single teaspoon of healthy soil contains more microorganisms than there are humans on Earth."},
+    {"tag": "Biology", "color": "bright_green", "text": "The pistol shrimp closes its claw so fast it creates a cavitation bubble that briefly reaches ~8,000°C — hotter than the Sun's surface."},
+    {"tag": "Biology", "color": "bright_green", "text": "Humans share about 60% of their DNA with bananas, and ~85% with a mouse."},
+
+    # ── Psychology ───────────────────────────────────────────────────────
+    {"tag": "Psychology", "color": "magenta", "text": "The brain cannot truly multitask — it rapidly switches between tasks, with a cognitive cost ('switch cost') each time."},
+    {"tag": "Psychology", "color": "magenta", "text": "It takes an average of 66 days (not 21) to form a new habit, according to research by Phillippa Lally at UCL."},
+    {"tag": "Psychology", "color": "magenta", "text": "The 'doorway effect': walking through a doorway creates a new memory context, causing you to forget what you were just thinking."},
+    {"tag": "Psychology", "color": "magenta", "text": "The placebo effect is growing stronger over time — modern clinical trials show higher placebo responses than those from 30 years ago."},
+    {"tag": "Psychology", "color": "magenta", "text": "The Dunning-Kruger effect: people with limited knowledge tend to overestimate their competence; experts underestimate theirs."},
+    {"tag": "Psychology", "color": "magenta", "text": "Social rejection activates the same brain regions as physical pain — being excluded genuinely hurts, neurologically speaking."},
+    {"tag": "Psychology", "color": "magenta", "text": "Decision fatigue is real: judges grant more lenient parole rulings earlier in the day and right after lunch breaks."},
+    {"tag": "Psychology", "color": "magenta", "text": "Smiling — even forced smiling — measurably improves mood. The brain partially interprets the facial muscle signals as genuine emotion."},
+    {"tag": "Psychology", "color": "magenta", "text": "The 'curse of knowledge': once you understand something deeply, you can't easily imagine not knowing it — making teaching hard."},
+    {"tag": "Psychology", "color": "magenta", "text": "Sleep deprivation for 17 hours produces cognitive impairment equivalent to a blood alcohol level of 0.05%."},
+    {"tag": "Psychology", "color": "magenta", "text": "The brain's default mode network is most active when you're doing 'nothing' — it's essential for creativity, memory consolidation, and self-reflection."},
+    {"tag": "Psychology", "color": "magenta", "text": "The 'cocktail party effect': your brain automatically highlights your own name in a noisy room, even when you're not consciously listening."},
+    {"tag": "Psychology", "color": "magenta", "text": "The peak-end rule: we judge experiences by their emotional peak and how they ended, not by their average — so save the best for last."},
+    {"tag": "Psychology", "color": "magenta", "text": "The 'IKEA effect': people assign significantly more value to things they've assembled or built themselves, even if the quality is mediocre."},
+    {"tag": "Psychology", "color": "magenta", "text": "Nostalgia is almost universally positive — we selectively remember the best parts of past experiences and forget the mundane or bad."},
+
+    # ── Mathematics ──────────────────────────────────────────────────────
+    {"tag": "Math", "color": "cyan", "text": "The number π has been calculated to over 100 trillion decimal places — and it never repeats or terminates."},
+    {"tag": "Math", "color": "cyan", "text": "There are more possible games of chess than atoms in the observable universe (~10¹²⁰ board positions vs ~10⁸⁰ atoms)."},
+    {"tag": "Math", "color": "cyan", "text": "Gödel's incompleteness theorems (1931) proved that no consistent mathematical system can prove all true statements within itself."},
+    {"tag": "Math", "color": "cyan", "text": "Zero was independently invented in India and Mesoamerica — the concept didn't reach Europe until around 1200 AD."},
+    {"tag": "Math", "color": "cyan", "text": "A 'googolplex' is 10^(10¹⁰⁰) — a number so large that writing it out would require more paper than atoms in the universe."},
+    {"tag": "Math", "color": "cyan", "text": "The Monty Hall problem stumped thousands of PhDs when published in 1990 — switching doors really does double your odds."},
+    {"tag": "Math", "color": "cyan", "text": "Benford's Law: in many real-world datasets, ~30% of numbers begin with the digit 1. Auditors use this to detect fraud."},
+    {"tag": "Math", "color": "cyan", "text": "The P vs NP problem — whether fast-to-verify problems are also fast-to-solve — is worth $1 million if you crack it."},
+    {"tag": "Math", "color": "cyan", "text": "There are different sizes of infinity. The infinity of real numbers is provably, strictly larger than the infinity of integers."},
+    {"tag": "Math", "color": "cyan", "text": "Goldbach's Conjecture: every even number > 2 is the sum of two primes. It's been verified up to 4×10¹⁸ — but never proven."},
+    {"tag": "Math", "color": "cyan", "text": "The Pythagorean theorem has over 370 known proofs — one was published by US President James Garfield in 1876."},
+    {"tag": "Math", "color": "cyan", "text": "A möbius strip has only one side and one edge. You can trace its entire surface without lifting your pen."},
+    {"tag": "Math", "color": "cyan", "text": "The Fibonacci sequence appears in flower petals, pinecone spirals, nautilus shells, and the proportions of spiral galaxies."},
+    {"tag": "Math", "color": "cyan", "text": "Arrow's impossibility theorem (1951) proves that no voting system can simultaneously satisfy all desirable fairness criteria."},
+    {"tag": "Math", "color": "cyan", "text": "The Collatz conjecture: for any positive integer, repeatedly halving evens and tripling-plus-one odds always reaches 1 — proven up to 2⁶⁸, never fully proved."},
+
+    # ── Language / Linguistics ───────────────────────────────────────────
+    {"tag": "Language", "color": "bright_green", "text": "'Dreamt' is one of the very few common English words ending in 'mt.'"},
+    {"tag": "Language", "color": "bright_green", "text": "The word 'robot' comes from Czech 'robota' (forced labor), coined by Karel Čapek in his 1920 play R.U.R."},
+    {"tag": "Language", "color": "bright_green", "text": "'OK' is considered the most universally understood word on Earth, used in virtually every language and culture."},
+    {"tag": "Language", "color": "bright_green", "text": "The oldest known written language is Sumerian cuneiform (~3400 BC in Mesopotamia) — recorded on clay tablets."},
+    {"tag": "Language", "color": "bright_green", "text": "English borrows about 60% of its vocabulary from French, Latin, and Greek — legacy of the Norman Conquest of 1066."},
+    {"tag": "Language", "color": "bright_green", "text": "The word 'salary' comes from Latin 'salarium' — Roman soldiers were reportedly sometimes paid in salt."},
+    {"tag": "Language", "color": "bright_green", "text": "The word 'algorithm' derives from the name of 9th-century Persian mathematician Al-Khwarizmi, who also gave us 'algebra.'"},
+    {"tag": "Language", "color": "bright_green", "text": "Shakespeare is credited with inventing over 1,700 words still in use today, including 'bedroom,' 'lonely,' and 'excitement.'"},
+    {"tag": "Language", "color": "bright_green", "text": "Esperanto, invented in 1887 by L.L. Zamenhof, is the world's most widely spoken constructed language with ~2 million speakers."},
+    {"tag": "Language", "color": "bright_green", "text": "The word 'quarantine' comes from Italian 'quarantina' — the 40-day isolation imposed on ships during the Black Death."},
+    {"tag": "Language", "color": "bright_green", "text": "There are about 7,000 languages spoken on Earth today; nearly half are considered endangered."},
+    {"tag": "Language", "color": "bright_green", "text": "The Voynich manuscript (15th century) is written in an undeciphered script — its language remains unknown despite decades of cryptanalysis."},
+    {"tag": "Language", "color": "bright_green", "text": "Toki Pona is a constructed language with only 123 words — designed to express fundamental ideas simply. You can learn it in a weekend."},
+    {"tag": "Language", "color": "bright_green", "text": "American Sign Language (ASL) and British Sign Language (BSL) are mutually unintelligible — they evolved independently."},
+    {"tag": "Language", "color": "bright_green", "text": "The 'word' with the most definitions in the Oxford English Dictionary is 'set' — with over 430 distinct uses."},
+
+    # ── History ───────────────────────────────────────────────────────────
+    {"tag": "History", "color": "yellow", "text": "Cleopatra lived closer in time to the Moon landing (1969) than to the construction of the Great Pyramid (~2560 BC)."},
+    {"tag": "History", "color": "yellow", "text": "Oxford University (est. ~1096 AD) is older than the Aztec Empire (est. 1428 AD) by over 300 years."},
+    {"tag": "History", "color": "yellow", "text": "The shortest war in history was between Britain and Zanzibar in 1896 — it lasted between 38 and 45 minutes."},
+    {"tag": "History", "color": "yellow", "text": "Nintendo was founded in 1889 to produce hand-painted playing cards, called hanafuda. Video games came 85 years later."},
+    {"tag": "History", "color": "yellow", "text": "The printing press (Gutenberg, ~1440) spread so fast that within 50 years, ~20 million books had been printed across Europe."},
+    {"tag": "History", "color": "yellow", "text": "The Great Wall of China is not visible from space with the naked eye — Chinese astronaut Yang Liwei confirmed this in 2003."},
+    {"tag": "History", "color": "yellow", "text": "Marie Curie won Nobel Prizes in both Physics (1903) and Chemistry (1911) — the only person to win in two different sciences."},
+    {"tag": "History", "color": "yellow", "text": "It took only 66 years between the Wright Brothers' first flight (1903) and Neil Armstrong walking on the Moon (1969)."},
+    {"tag": "History", "color": "yellow", "text": "Nikola Tesla died penniless in a New York hotel room in 1943, despite holding patents for AC electricity and wireless transmission."},
+    {"tag": "History", "color": "yellow", "text": "The Berlin Wall stood for 10,316 days (1961–1989). As of 2025, it has been gone for longer than it ever existed."},
+    {"tag": "History", "color": "yellow", "text": "The first Olympics (776 BC) had only one event: a ~192-meter foot race called the stadion."},
+    {"tag": "History", "color": "yellow", "text": "It took about 4 years to build the Eiffel Tower (1887–1889). It was designed as a temporary structure meant to be torn down after 20 years."},
+    {"tag": "History", "color": "yellow", "text": "The Great Fire of London (1666) destroyed 13,200 houses and 87 churches — yet officially only 6 people died."},
+    {"tag": "History", "color": "yellow", "text": "Napoleon was not particularly short for his era — at ~5'7\" (170 cm) he was average. The 'short Napoleon' myth was partly British propaganda."},
+    {"tag": "History", "color": "yellow", "text": "The first photograph ever required an 8-hour exposure — taken by Joseph Nicéphore Niépce in 1826 from his upstairs window."},
+
+    # ── Geography ────────────────────────────────────────────────────────
+    {"tag": "Geography", "color": "green", "text": "Russia spans 11 time zones — more than any other country on Earth."},
+    {"tag": "Geography", "color": "green", "text": "Australia is wider than the Moon — Australia's diameter is ~4,000 km; the Moon's is ~3,474 km."},
+    {"tag": "Geography", "color": "green", "text": "There are more trees on Earth (~3 trillion) than stars in the Milky Way (~300 billion)."},
+    {"tag": "Geography", "color": "green", "text": "Canada has more lakes than the rest of the world combined — home to over 60% of the world's total freshwater lakes."},
+    {"tag": "Geography", "color": "green", "text": "The Pacific Ocean alone is larger than all of Earth's landmasses combined."},
+    {"tag": "Geography", "color": "green", "text": "The Dead Sea is 430 meters below sea level — the lowest exposed point on Earth's surface."},
+    {"tag": "Geography", "color": "green", "text": "Antarctica holds approximately 70% of Earth's fresh water, locked in its ice sheets."},
+    {"tag": "Geography", "color": "green", "text": "Vatican City is the world's smallest country at 0.44 km² — smaller than many city parks."},
+    {"tag": "Geography", "color": "green", "text": "The Amazon rainforest contains roughly 10% of all species on Earth and produces ~20% of the world's oxygen."},
+    {"tag": "Geography", "color": "green", "text": "Iceland is tectonically growing about 2.5 cm per year as the Mid-Atlantic Ridge slowly spreads apart beneath it."},
+
+    # ── Food Science ─────────────────────────────────────────────────────
+    {"tag": "Food Science", "color": "bright_yellow", "text": "Capsaicin, the compound that makes chili peppers hot, triggers the exact same pain receptors as physical heat — your mouth is being 'tricked.'"},
+    {"tag": "Food Science", "color": "bright_yellow", "text": "Carrots were originally purple and yellow — the familiar orange variety was cultivated in the Netherlands in the 17th century."},
+    {"tag": "Food Science", "color": "bright_yellow", "text": "Saffron costs up to $10,000 per kilogram — each tiny thread must be hand-harvested from a crocus flower."},
+    {"tag": "Food Science", "color": "bright_yellow", "text": "Pineapple contains bromelain, an enzyme that digests protein — which is why it creates a tingling sensation as it breaks down your tongue."},
+    {"tag": "Food Science", "color": "bright_yellow", "text": "Wasabi served at most sushi restaurants outside Japan is horseradish with green food coloring — real wasabi is expensive and rare."},
+    {"tag": "Food Science", "color": "bright_yellow", "text": "The Maillard reaction — the browning of food at high heat — creates hundreds of distinct flavor and aroma compounds simultaneously."},
+    {"tag": "Food Science", "color": "bright_yellow", "text": "There are over 1,000 known varieties of banana — the Cavendish you buy at the supermarket is just the most commercially resilient."},
+    {"tag": "Food Science", "color": "bright_yellow", "text": "Coffee is the world's second most traded commodity after crude oil. Over 2 billion cups are consumed daily."},
+    {"tag": "Food Science", "color": "bright_yellow", "text": "Umami, the 'fifth taste,' was identified by Japanese chemist Kikunae Ikeda in 1908 while studying the flavor of seaweed broth."},
+    {"tag": "Food Science", "color": "bright_yellow", "text": "Avocados are technically a large berry with a single seed. So is a banana. So is a watermelon."},
+
+    # ── Animals ───────────────────────────────────────────────────────────
+    {"tag": "Animals", "color": "green", "text": "A snail can sleep for up to 3 years when environmental conditions are unfavorable."},
+    {"tag": "Animals", "color": "green", "text": "Wombats produce cube-shaped droppings — the only known animal to do so. The cube shape prevents the droppings from rolling away."},
+    {"tag": "Animals", "color": "green", "text": "Cows have best friends and display measurable stress when separated from their preferred companions."},
+    {"tag": "Animals", "color": "green", "text": "Polar bears have black skin beneath their white fur. The fur itself is actually transparent, and appears white by scattering light."},
+    {"tag": "Animals", "color": "green", "text": "Cats cannot taste sweetness — they lack the gene for the sweet taste receptor. Obligate carnivores don't need to detect sugar."},
+    {"tag": "Animals", "color": "green", "text": "Dolphins sleep with one brain hemisphere at a time, keeping one eye open to watch for predators."},
+    {"tag": "Animals", "color": "green", "text": "Migratory birds navigate using quantum entanglement in cryptochrome proteins in their eyes — sensitive to Earth's magnetic field."},
+    {"tag": "Animals", "color": "green", "text": "An elephant can detect the footsteps of another elephant over 30 km away — through seismic vibrations sensed in their feet and trunk."},
+    {"tag": "Animals", "color": "green", "text": "The tongue of a blue whale weighs as much as an adult elephant — roughly 2,700 kg."},
+    {"tag": "Animals", "color": "green", "text": "A group of flamingos is called a 'flamboyance.' A group of crows is a 'murder.' A group of owls is a 'parliament.'"},
+
+    # ── Human Body ────────────────────────────────────────────────────────
+    {"tag": "Human Body", "color": "bright_red", "text": "The human brain contains ~86 billion neurons connected by ~100 trillion synapses — more connections than stars in the Milky Way."},
+    {"tag": "Human Body", "color": "bright_red", "text": "Your stomach acid (pH ~1.5–2) is strong enough to dissolve zinc metal and break down small pieces of iron."},
+    {"tag": "Human Body", "color": "bright_red", "text": "The liver can regenerate from as little as 25% of its original mass — the only visceral organ capable of natural regeneration."},
+    {"tag": "Human Body", "color": "bright_red", "text": "The human nose can detect over 1 trillion distinct smells — far more than the 10,000 once claimed in textbooks."},
+    {"tag": "Human Body", "color": "bright_red", "text": "Blood vessels in the human body, laid end to end, would stretch roughly 100,000 km — 2.5 times the circumference of the Earth."},
+    {"tag": "Human Body", "color": "bright_red", "text": "The cornea is the only tissue in the human body with no blood supply — it gets oxygen directly from the air and aqueous humor."},
+    {"tag": "Human Body", "color": "bright_red", "text": "Teeth are the only part of the human body that cannot repair themselves. Every other tissue has some regenerative capacity."},
+    {"tag": "Human Body", "color": "bright_red", "text": "The human skeleton replaces itself completely approximately every 10 years — you're not running on the same bones you were born with."},
+    {"tag": "Human Body", "color": "bright_red", "text": "Human DNA, fully uncoiled from all cells in your body, would stretch from Earth to Pluto and back about 17 times."},
+    {"tag": "Human Body", "color": "bright_red", "text": "Humans are bioluminescent — our bodies emit visible light, but it's ~1,000× too faint for the naked eye to see."},
+
+    # ── Debug Wisdom / Programmer Humor ───────────────────────────────────
+    {"tag": "Debug Wisdom", "color": "red", "text": "There are only 10 types of people in the world: those who understand binary, and those who don't."},
+    {"tag": "Debug Wisdom", "color": "red", "text": "'It works on my machine' — shipping the machine has been proposed as a valid deployment strategy."},
+    {"tag": "Debug Wisdom", "color": "red", "text": "Debugging is like being a detective in a crime movie where you are also the murderer."},
+    {"tag": "Debug Wisdom", "color": "red", "text": "Any sufficiently advanced bug is indistinguishable from a feature. — Culver's Law"},
+    {"tag": "Debug Wisdom", "color": "red", "text": "Always code as if the person who ends up maintaining your code is a violent psychopath who knows where you live."},
+    {"tag": "Debug Wisdom", "color": "red", "text": "The first 90% of the code accounts for 90% of the time. The remaining 10% accounts for the other 90%. — Hofstadter"},
+    {"tag": "Debug Wisdom", "color": "red", "text": "If debugging is the process of removing bugs, then programming must be the process of putting them in."},
+    {"tag": "Debug Wisdom", "color": "red", "text": "Documentation is like sex: when it's good, it's very, very good; when it's bad, it's still better than nothing."},
+    {"tag": "Debug Wisdom", "color": "red", "text": "To understand recursion, you must first understand recursion."},
+    {"tag": "Debug Wisdom", "color": "red", "text": "The best code is no code at all. Every line you write is a line you'll have to debug."},
+    {"tag": "Debug Wisdom", "color": "red", "text": "It's always DNS."},
+    {"tag": "Debug Wisdom", "color": "red", "text": "Weeks of coding can save you hours of planning."},
+    {"tag": "Debug Wisdom", "color": "red", "text": "There are two hard problems in computer science: cache invalidation, naming things, and off-by-one errors."},
+    {"tag": "Debug Wisdom", "color": "red", "text": "A user interface is like a joke. If you have to explain it, it's not that good."},
+    {"tag": "Debug Wisdom", "color": "red", "text": "The most dangerous phrase in software: 'We've always done it this way.'"},
+
+    # ── Science ───────────────────────────────────────────────────────────
+    {"tag": "Science", "color": "bright_cyan", "text": "CRISPR-Cas9, a gene-editing tool derived from a bacterial immune system, allows precise DNA editing with unprecedented accuracy."},
+    {"tag": "Science", "color": "bright_cyan", "text": "The human genome contains ~3 billion base pairs, but only ~2% encodes proteins — the rest regulates when and how genes are expressed."},
+    {"tag": "Science", "color": "bright_cyan", "text": "AlphaFold (DeepMind, 2020) solved the 50-year-old protein folding problem, predicting 3D protein structure from amino acid sequences."},
+    {"tag": "Science", "color": "bright_cyan", "text": "Gravitational waves, predicted by Einstein in 1916, were first directly detected in 2015 by LIGO — 99 years later."},
+    {"tag": "Science", "color": "bright_cyan", "text": "The oldest known living organism is a ~5,000-year-old bristlecone pine in the White Mountains of California, nicknamed Methuselah."},
+    {"tag": "Science", "color": "bright_cyan", "text": "The butterfly effect: Lorenz (1963) showed that tiny differences in initial conditions can produce wildly different outcomes in chaotic systems."},
+    {"tag": "Science", "color": "bright_cyan", "text": "Smell is the sense most directly linked to memory — the olfactory bulb connects directly to the hippocampus and amygdala."},
+    {"tag": "Science", "color": "bright_cyan", "text": "The periodic table was predicted by Mendeleev in 1869. He left deliberate gaps for elements not yet discovered — and was right."},
+    {"tag": "Science", "color": "bright_cyan", "text": "The placebo effect works even in 'open-label' trials where patients know they're taking a sugar pill — the ritual of treatment matters."},
+    {"tag": "Science", "color": "bright_cyan", "text": "Every second, the Sun converts 600 million tons of hydrogen into helium through nuclear fusion, releasing energy as light and heat."},
+
+    # ── AI & ML ───────────────────────────────────────────────────────────
+    {"tag": "AI & ML", "color": "bright_yellow", "text": "The term 'Artificial Intelligence' was coined by John McCarthy at the Dartmouth Conference in 1956."},
+    {"tag": "AI & ML", "color": "bright_yellow", "text": "Deep learning was largely ignored for decades until AlexNet won the 2012 ImageNet competition by a margin that shocked the field."},
+    {"tag": "AI & ML", "color": "bright_yellow", "text": "AlphaGo (2016) defeated world Go champion Lee Sedol. Go has more possible board positions than atoms in the observable universe."},
+    {"tag": "AI & ML", "color": "bright_yellow", "text": "The Transformer architecture, behind most modern LLMs, was introduced in the 2017 paper 'Attention Is All You Need' — by 8 Google researchers."},
+    {"tag": "AI & ML", "color": "bright_yellow", "text": "The largest AI training runs use more electricity than a small country. Training GPT-3 produced roughly 500 tonnes of CO₂."},
+    {"tag": "AI & ML", "color": "bright_yellow", "text": "Reinforcement learning is inspired by animal conditioning — the same trial-and-error principle Pavlov demonstrated with his famous dogs."},
+    {"tag": "AI & ML", "color": "bright_yellow", "text": "Convolutional neural networks were inspired by Nobel Prize-winning experiments on cat visual cortex by Hubel and Wiesel in 1959."},
+    {"tag": "AI & ML", "color": "bright_yellow", "text": "The 'AI winter' of the 1970s–80s occurred when early hype far exceeded results — funding dried up twice before deep learning emerged."},
+    {"tag": "AI & ML", "color": "bright_yellow", "text": "Neural networks were first proposed by McCulloch and Pitts in 1943, inspired by how biological neurons fire."},
+    {"tag": "AI & ML", "color": "bright_yellow", "text": "Generative adversarial networks (GANs) were invented by Ian Goodfellow in 2014, reportedly after a late-night argument at a bar."},
+
+    # ── Cryptography & Security ───────────────────────────────────────────
+    {"tag": "Crypto & Sec", "color": "red", "text": "RSA encryption (1977) is based on the mathematical difficulty of factoring the product of two large prime numbers."},
+    {"tag": "Crypto & Sec", "color": "red", "text": "The Enigma machine had ~158 quintillion possible configurations — Alan Turing's Bombe reduced this to a tractable search space."},
+    {"tag": "Crypto & Sec", "color": "red", "text": "The one-time pad is the only mathematically proven, perfectly unbreakable encryption — but only if each key is used exactly once."},
+    {"tag": "Crypto & Sec", "color": "red", "text": "SHA-256, used in Bitcoin, produces a 256-bit hash — 2²⁵⁶ possible outputs, more than atoms in the observable universe."},
+    {"tag": "Crypto & Sec", "color": "red", "text": "Zero-knowledge proofs let you prove you know a secret without revealing any information about the secret itself."},
+    {"tag": "Crypto & Sec", "color": "red", "text": "The Caesar cipher (~50 BC) simply shifts each letter by a fixed number — the first documented cipher in history."},
+    {"tag": "Crypto & Sec", "color": "red", "text": "Quantum computers threaten RSA and ECC — NIST finalized its first post-quantum cryptography standards in 2024."},
+
+    # ── Environment ───────────────────────────────────────────────────────
+    {"tag": "Environment", "color": "green", "text": "Plastic takes 400–1,000 years to decompose in a landfill; a glass bottle takes over 1 million years."},
+    {"tag": "Environment", "color": "green", "text": "A single mature tree absorbs ~22 kg of CO₂ per year and releases enough oxygen for approximately 2 people to breathe."},
+    {"tag": "Environment", "color": "green", "text": "The ocean produces ~50% of Earth's oxygen — primarily from phytoplankton, not trees."},
+    {"tag": "Environment", "color": "green", "text": "Coral reefs cover less than 1% of the ocean floor but support approximately 25% of all marine species."},
+    {"tag": "Environment", "color": "green", "text": "Rewilding wolves into Yellowstone (1995) changed the course of rivers — via a trophic cascade that transformed the ecosystem."},
+    {"tag": "Environment", "color": "green", "text": "Wind and solar power are now the cheapest forms of electricity generation in history — cheaper than new coal plants in most countries."},
+    {"tag": "Environment", "color": "green", "text": "Electric vehicles convert ~85–90% of battery energy into motion; internal combustion engines convert only ~20–40%."},
+
+    # ── Philosophy ────────────────────────────────────────────────────────
+    {"tag": "Philosophy", "color": "magenta", "text": "The Ship of Theseus: if every part of a ship is gradually replaced, is it still the same ship? Applied to code: if you rewrite every module, is it the same software?"},
+    {"tag": "Philosophy", "color": "magenta", "text": "Occam's Razor: among competing explanations, the one that requires the fewest assumptions is usually correct."},
+    {"tag": "Philosophy", "color": "magenta", "text": "Zeno's paradoxes (450 BC) argued motion is mathematically impossible — they weren't resolved until calculus was invented 2,000 years later."},
+    {"tag": "Philosophy", "color": "magenta", "text": "The Turing Test (1950): a machine 'thinks' if a human can't distinguish it from a person in conversation. Still debated as a benchmark."},
+    {"tag": "Philosophy", "color": "magenta", "text": "Confucius, Socrates, and the Buddha all lived within ~100 years of each other (~500 BC) — Karl Jaspers called it the 'Axial Age.'"},
+    {"tag": "Philosophy", "color": "magenta", "text": "Hanlon's Razor: never attribute to malice that which can be adequately explained by incompetence."},
+
+    # ── Cool Facts ────────────────────────────────────────────────────────
+    {"tag": "Cool Fact", "color": "bright_blue", "text": "The lighter was invented before the match — by Johann Wolfgang Döbereiner in 1823, while friction matches weren't invented until 1826."},
+    {"tag": "Cool Fact", "color": "bright_blue", "text": "There are more possible ways to shuffle a deck of 52 cards (~8×10⁶⁷) than atoms in the observable universe (~10⁸⁰... wait, that's close — the number of shuffles is enormous)."},
+    {"tag": "Cool Fact", "color": "bright_blue", "text": "The smell of rain (petrichor) is caused by geosmin from soil bacteria and plant oils — your nose can detect it at concentrations as low as 5 parts per trillion."},
+    {"tag": "Cool Fact", "color": "bright_blue", "text": "All the gold ever mined in human history would fit into a cube about 21 meters on each side."},
+    {"tag": "Cool Fact", "color": "bright_blue", "text": "The average person walks about 100,000 km in a lifetime — roughly 2.5 times the circumference of the Earth."},
+    {"tag": "Cool Fact", "color": "bright_blue", "text": "Velcro was invented in 1941 by Swiss engineer George de Mestral after noticing burrs sticking to his dog's fur after a hike."},
+    {"tag": "Cool Fact", "color": "bright_blue", "text": "The human heart beats ~100,000 times per day, ~35 million per year, ~2.5 billion times in a typical lifetime."},
+    {"tag": "Cool Fact", "color": "bright_blue", "text": "A cubic centimeter of a white dwarf star weighs approximately one tonne on Earth."},
+    {"tag": "Cool Fact", "color": "bright_blue", "text": "Grapes explode in the microwave, creating a plasma discharge — Canadian physicists published a study explaining why in 2019."},
+    {"tag": "Cool Fact", "color": "bright_blue", "text": "The first product ever scanned with a barcode was a pack of Wrigley's chewing gum at a Marsh supermarket in Ohio in 1974."},
+    {"tag": "Cool Fact", "color": "bright_blue", "text": "The 'God's number' for a Rubik's Cube is 20 — any scrambled state can be solved in at most 20 moves. Proven in 2010."},
+    {"tag": "Cool Fact", "color": "bright_blue", "text": "Every snowflake has a unique crystal structure determined by the exact atmospheric conditions it encountered during its fall."},
+    {"tag": "Cool Fact", "color": "bright_blue", "text": "The average cloud weighs over 500,000 kg — but the droplets are so spread out that the density is less than air, so it floats."},
+    {"tag": "Cool Fact", "color": "bright_blue", "text": "DNA stores information at ~215 petabytes per gram. All of humanity's data could theoretically be stored in a few grams of DNA."},
+    {"tag": "Cool Fact", "color": "bright_blue", "text": "Ants never sleep in the traditional sense — they take hundreds of 1-minute power naps throughout the day, totaling about 5 hours."},
+    {"tag": "Cool Fact", "color": "bright_blue", "text": "The first text message ever sent was 'Merry Christmas,' typed by Neil Papworth on December 3, 1992."},
+    {"tag": "Cool Fact", "color": "bright_blue", "text": "A pencil can draw a line approximately 56 km long or write about 45,000 words before the graphite runs out."},
+    {"tag": "Cool Fact", "color": "bright_blue", "text": "The Great Wall of China's mortar contains sticky rice amylopectin — which is why sections built with it are still standing after 600+ years."},
+    {"tag": "Cool Fact", "color": "bright_blue", "text": "The word 'cereal' comes from Ceres, the Roman goddess of agriculture and grain."},
+    {"tag": "Cool Fact", "color": "bright_blue", "text": "Coca-Cola originally contained cocaine from coca leaves — the cocaine was quietly removed in 1903."},
+    {"tag": "Cool Fact", "color": "bright_blue", "text": "Sloths move so slowly that algae grow on their fur — providing natural camouflage in the forest canopy."},
+    {"tag": "Cool Fact", "color": "bright_blue", "text": "The 'Overview Effect' is a cognitive shift reported by almost every astronaut after seeing Earth from space — a profound sense of interconnectedness."},
+    {"tag": "Cool Fact", "color": "bright_blue", "text": "Neurons that fire together, wire together — the Hebbian learning principle that underlies all memory and habit formation."},
+    {"tag": "Cool Fact", "color": "bright_blue", "text": "The moon has moonquakes — caused by tidal forces from Earth's gravity and the dramatic temperature swings between lunar day and night."},
+    {"tag": "Cool Fact", "color": "bright_blue", "text": "If the Sun were shrunk to the size of a white blood cell, the Milky Way would be roughly the size of the continental United States."},
+]
+
+# ── Extra CS / Internet / Web ─────────────────────────────────────────────
+_LOCAL_FACTS += [
+    {"tag": "CS History", "color": "cyan", "text": "The first YouTube video ('Me at the zoo') was uploaded on April 23, 2005, by co-founder Jawed Karim."},
+    {"tag": "CS History", "color": "cyan", "text": "Amazon Web Services (AWS) launched in 2006 as a side project to monetize Amazon's spare server infrastructure."},
+    {"tag": "CS History", "color": "cyan", "text": "GitHub was founded in 2008; Microsoft acquired it for $7.5 billion in 2018."},
+    {"tag": "CS History", "color": "cyan", "text": "The first iPhone (2007) had no App Store, no 3G, no copy-paste, and no MMS on launch."},
+    {"tag": "CS History", "color": "cyan", "text": "Stack Overflow was founded in 2008 and now hosts over 50 million questions and answers."},
+    {"tag": "CS History", "color": "cyan", "text": "The first computer animation was a short film produced at Bell Labs in 1963 — a simulation of two spheres orbiting each other."},
+    {"tag": "CS History", "color": "cyan", "text": "The first emoji set (176 icons) was created by Shigetaka Kurita for NTT Docomo's i-mode mobile internet in 1999."},
+    {"tag": "CS History", "color": "cyan", "text": "Linus Torvalds was 21 years old when he first released the Linux kernel to the public in September 1991."},
+    {"tag": "CS History", "color": "cyan", "text": "Python's 'import this' Easter egg — the Zen of Python — was written by Tim Peters in 1999 and hidden as a joke."},
+    {"tag": "CS History", "color": "cyan", "text": "The world's first computer programmer, Ada Lovelace, predicted in 1843 that machines could compose music — 100 years before computers existed."},
+    {"tag": "The Web", "color": "blue", "text": "There are over 1.5 billion websites, but only ~200 million are actively maintained and updated."},
+    {"tag": "The Web", "color": "blue", "text": "About 3.5 billion Google searches are made every day — roughly 40,000 per second."},
+    {"tag": "The Web", "color": "blue", "text": "The original PageRank algorithm was named after Larry Page, not 'page' as in web page."},
+    {"tag": "The Web", "color": "blue", "text": "IPv4 (4.3 billion addresses) is nearly exhausted. IPv6 provides 3.4×10³⁸ addresses — enough for 100 per atom on Earth."},
+    {"tag": "The Web", "color": "blue", "text": "The average web page in 2010 was ~700 KB; today it's ~4 MB — a 5× increase driven by images, fonts, and JavaScript."},
+    {"tag": "The Web", "color": "blue", "text": "The first internet-connected toaster was demonstrated at Interop 1990, controlled via SNMP — the IoT started as a party trick."},
+    {"tag": "The Web", "color": "blue", "text": "Email was the internet's first 'killer app,' driving early adoption of ARPANET in the 1970s."},
+    {"tag": "The Web", "color": "blue", "text": "90% of all data in the world was generated in the last two years — the rate of data creation is accelerating exponentially."},
+    {"tag": "The Web", "color": "blue", "text": "The Internet Archive has preserved over 750 billion web pages since 1996. Some early pages exist only in the Wayback Machine."},
+    {"tag": "The Web", "color": "blue", "text": "In 2012, Facebook had 1 billion users. It reached 3 billion in 2023 — nearly 40% of the entire world population."},
+]
+
+# ── Extra Hardware / Systems ───────────────────────────────────────────────
+_LOCAL_FACTS += [
+    {"tag": "Hardware", "color": "bright_blue", "text": "The first commercial laptop, the Osborne 1 (1981), weighed 24 lbs and had a 5-inch screen — it still sold 125,000 units."},
+    {"tag": "Hardware", "color": "bright_blue", "text": "A modern LED bulb is ~200 lumens/watt; an incandescent bulb is ~15 lumens/watt — LEDs are 13× more efficient."},
+    {"tag": "Hardware", "color": "bright_blue", "text": "The sound card was not standard in PCs until the early 1990s — before that, computers communicated via beeps from a tiny speaker."},
+    {"tag": "Hardware", "color": "bright_blue", "text": "IBM's first PC (Model 5150, 1981) ran MS-DOS, had 64 KB of RAM, and cost $1,565 — about $5,000 in today's money."},
+    {"tag": "Hardware", "color": "bright_blue", "text": "USB (Universal Serial Bus) was created in 1996 by Intel, Microsoft, IBM and others to replace over 15 incompatible connector types."},
+    {"tag": "Hardware", "color": "bright_blue", "text": "Liquid metal thermal compounds conduct heat ~30× better than typical silicone thermal paste, but can damage aluminum heatsinks."},
+    {"tag": "Hardware", "color": "bright_blue", "text": "The first consumer SSD (StorageTek STC 4305, 1978) used magnetic bubble memory and cost $400,000 for 45 MB of storage."},
+    {"tag": "Hardware", "color": "bright_blue", "text": "A quantum computer's qubit can represent both 0 and 1 simultaneously (superposition) — but reading it collapses it to one value."},
+    {"tag": "Hardware", "color": "bright_blue", "text": "TSMC's 2nm process nodes are expected to pack over 100 million transistors per square millimeter of silicon."},
+    {"tag": "Hardware", "color": "bright_blue", "text": "The world's most precise clock (an optical lattice clock) would lose less than 1 second over the entire age of the universe."},
+]
+
+# ── Extra Space ────────────────────────────────────────────────────────────
+_LOCAL_FACTS += [
+    {"tag": "Space", "color": "bright_magenta", "text": "Mercury has no moons and no real atmosphere, yet has water ice in permanently shadowed craters near its poles."},
+    {"tag": "Space", "color": "bright_magenta", "text": "The Chicxulub asteroid that killed the dinosaurs ~66 million years ago hit with the force of ~10 billion Hiroshima bombs."},
+    {"tag": "Space", "color": "bright_magenta", "text": "There are rogue planets — ejected from their solar systems — drifting alone through interstellar space, never orbiting a star."},
+    {"tag": "Space", "color": "bright_magenta", "text": "The largest known star, UY Scuti, is so large that ~1,700 Suns could fit across its diameter."},
+    {"tag": "Space", "color": "bright_magenta", "text": "The 'Pioneer plaques' (1972) were the first physical messages sent into interstellar space, designed by Carl Sagan and Frank Drake."},
+    {"tag": "Space", "color": "bright_magenta", "text": "The James Webb Space Telescope can see infrared light from galaxies that formed just 300 million years after the Big Bang."},
+    {"tag": "Space", "color": "bright_magenta", "text": "The Drake Equation estimates between 1 and millions of communicating civilizations in the Milky Way — the uncertainty spans 6 orders of magnitude."},
+    {"tag": "Space", "color": "bright_magenta", "text": "The light we see from the Andromeda Galaxy tonight left it 2.5 million years ago — before modern humans existed."},
+    {"tag": "Space", "color": "bright_magenta", "text": "The average distance between stars in the Milky Way is about 5 light-years. Space is overwhelmingly empty."},
+    {"tag": "Space", "color": "bright_magenta", "text": "A 'cosmic year' (one orbit of the Sun around the Milky Way) is ~225 million years. The Sun is about 20 cosmic years old."},
+]
+
+# ── Extra Biology / Animals ────────────────────────────────────────────────
+_LOCAL_FACTS += [
+    {"tag": "Biology", "color": "bright_green", "text": "The human body contains more bacterial cells (~38 trillion) than human cells (~37 trillion)."},
+    {"tag": "Biology", "color": "bright_green", "text": "Epigenetics: your experiences and environment can change which genes are switched on or off — and some changes may be inherited."},
+    {"tag": "Biology", "color": "bright_green", "text": "The appendix is not vestigial — it harbors a reservoir of beneficial gut bacteria and has immune tissue lining its walls."},
+    {"tag": "Biology", "color": "bright_green", "text": "Naked mole rats are nearly cancer-immune, feel almost no pain from acid, and can survive 18 minutes without oxygen."},
+    {"tag": "Biology", "color": "bright_green", "text": "The human gut hosts ~500 species of bacteria, weighing ~1–2 kg collectively — essential for digestion, immunity, and mental health."},
+    {"tag": "Biology", "color": "bright_green", "text": "A single strand of human DNA, if uncoiled, is about 2 meters long. Every cell in your body contains a full copy."},
+    {"tag": "Biology", "color": "bright_green", "text": "The human brain generates about 20 watts of electrical power — enough to power a dim LED light bulb."},
+    {"tag": "Animals", "color": "green", "text": "Elephants are one of the few non-primate animals known to use tools, mourn their dead, and pass knowledge across generations."},
+    {"tag": "Animals", "color": "green", "text": "A group of pugs is called a 'grumble.' A group of ferrets is a 'business.' A group of hedgehogs is a 'prickle.'"},
+    {"tag": "Animals", "color": "green", "text": "Mantis shrimps can punch with the force of a bullet, moving their claws at 23 m/s. Their punch can break aquarium glass."},
+    {"tag": "Animals", "color": "green", "text": "Crows have been observed using traffic to crack nuts, waiting for red lights and collecting the crushed nuts on green."},
+    {"tag": "Animals", "color": "green", "text": "Sea otters hold hands while sleeping so they don't drift apart — a behavior called 'rafting.'"},
+    {"tag": "Animals", "color": "green", "text": "The blue-ringed octopus is the size of a golf ball but carries enough venom to kill 26 adult humans within minutes."},
+    {"tag": "Animals", "color": "green", "text": "Horses can sleep standing up for light sleep (a few minutes) but need to lie down for REM sleep."},
+    {"tag": "Animals", "color": "green", "text": "Bees can recognize and remember individual human faces — despite their tiny brains, they use a similar holistic face-processing strategy to humans."},
+]
+
+# ── Extra Psychology / Human Behavior ─────────────────────────────────────
+_LOCAL_FACTS += [
+    {"tag": "Psychology", "color": "magenta", "text": "The 'bystander effect': the more witnesses there are to an emergency, the less likely any single person is to intervene."},
+    {"tag": "Psychology", "color": "magenta", "text": "People tend to be more afraid of public speaking than of death — which technically means most people would rather be in the coffin than deliver the eulogy."},
+    {"tag": "Psychology", "color": "magenta", "text": "Color perception is partly cultural — the Himba people of Namibia distinguish subtle shades of green that English speakers can't easily name, but struggle with blue vs. green."},
+    {"tag": "Psychology", "color": "magenta", "text": "The brain is so good at pattern recognition that it finds faces in clouds, wood grain, and toast — a phenomenon called pareidolia."},
+    {"tag": "Psychology", "color": "magenta", "text": "'Availability heuristic': we judge the likelihood of events by how easily examples come to mind — which is why people overestimate shark attacks and underestimate car crashes."},
+    {"tag": "Psychology", "color": "magenta", "text": "Working memory can hold roughly 7±2 items at once. This is why phone numbers were traditionally 7 digits."},
+    {"tag": "Psychology", "color": "magenta", "text": "Studies show that handwriting notes leads to better retention than typing — the extra processing required reinforces memory encoding."},
+    {"tag": "Psychology", "color": "magenta", "text": "The 'protégé effect': teaching something to someone else is one of the most powerful ways to learn it yourself."},
+    {"tag": "Psychology", "color": "magenta", "text": "Humans are the only animals known to cry from emotional pain or happiness — though elephants and some primates show similar behaviors."},
+    {"tag": "Psychology", "color": "magenta", "text": "Research shows that ~47% of waking hours are spent mind-wandering — not thinking about what you're currently doing."},
+]
+
+# ── Extra History / Geography / Society ───────────────────────────────────
+_LOCAL_FACTS += [
+    {"tag": "History", "color": "yellow", "text": "Ancient Egyptians used a 365-day calendar as early as 2800 BC — remarkably close to the actual 365.25-day solar year."},
+    {"tag": "History", "color": "yellow", "text": "The Roman Empire at its peak (~117 AD) controlled territory spanning from Scotland to Mesopotamia — about 5 million km²."},
+    {"tag": "History", "color": "yellow", "text": "The Black Death killed roughly 1/3 of Europe's population in the 14th century — an estimated 25 million people."},
+    {"tag": "History", "color": "yellow", "text": "Alexander the Great had conquered most of the known world by age 30 and had never lost a battle."},
+    {"tag": "History", "color": "yellow", "text": "Tutankhamun became Pharaoh of Egypt at approximately 9 years old and died at approximately 19."},
+    {"tag": "History", "color": "yellow", "text": "The ancient Romans used a form of toothpaste made from urine — the ammonia content made it an effective cleaning agent."},
+    {"tag": "History", "color": "yellow", "text": "Genghis Khan's campaigns were so destructive that CO₂ levels measurably dropped as forests regrew on abandoned farmland."},
+    {"tag": "History", "color": "yellow", "text": "The concept of zero wasn't adopted in Europe until the 12th century, severely limiting European mathematics for centuries."},
+    {"tag": "History", "color": "yellow", "text": "Isaac Newton invented calculus during the plague lockdown of 1665–66, while universities were closed and he worked from home."},
+    {"tag": "History", "color": "History", "text": "The first photograph required an 8-hour exposure — taken by Joseph Nicéphore Niépce in 1826. Modern cameras capture the same scene in 1/4000th of a second."},
+    {"tag": "Geography", "color": "green", "text": "The Amazon River discharges ~20% of all fresh water entering the world's oceans — more than the next 7 largest rivers combined."},
+    {"tag": "Geography", "color": "green", "text": "The Mariana Trench is ~11 km deep — if Mount Everest were placed in it, the peak would still be over 2 km underwater."},
+    {"tag": "Geography", "color": "green", "text": "Finland has more saunas (~3 million) than cars. There is roughly one sauna per 2 people in the country."},
+    {"tag": "Geography", "color": "green", "text": "Norway has a land border with Russia — the two countries share a 195.7 km frontier in the Arctic north."},
+    {"tag": "Geography", "color": "green", "text": "The Sahara Desert was green and fertile as recently as 5,000–11,000 years ago, supporting hippos, crocodiles, and human settlements."},
+]
+
+# ── Extra Math / Science ───────────────────────────────────────────────────
+_LOCAL_FACTS += [
+    {"tag": "Math", "color": "cyan", "text": "There are more possible shuffles of a 52-card deck (~8×10⁶⁷) than the number of atoms in the observable universe (~10⁸⁰). These are actually close in scale."},
+    {"tag": "Math", "color": "cyan", "text": "The number 1 is not a prime — by convention. Adjusting the definition prevents the Fundamental Theorem of Arithmetic from needing an awkward exception."},
+    {"tag": "Math", "color": "cyan", "text": "A Klein bottle is a 4-dimensional surface with no inside or outside. The best we can do in 3D is a self-intersecting approximation."},
+    {"tag": "Math", "color": "cyan", "text": "The halting problem (Turing, 1936) proves no general algorithm can determine if a program will ever finish or loop forever."},
+    {"tag": "Math", "color": "cyan", "text": "The prime counting function π(x) is approximately x/ln(x) — the Prime Number Theorem, independently proved by Hadamard and de la Vallée Poussin in 1896."},
+    {"tag": "Science", "color": "bright_cyan", "text": "Helium is the only element discovered in space (via solar spectroscopy in 1868) before being found on Earth (1895)."},
+    {"tag": "Science", "color": "bright_cyan", "text": "Penicillin was discovered by Alexander Fleming in 1928 when he noticed a mold killing bacteria in a petri dish he'd left near a window."},
+    {"tag": "Science", "color": "bright_cyan", "text": "The Large Hadron Collider at CERN is the largest machine ever built — a 27 km ring buried 100 m underground on the French-Swiss border."},
+    {"tag": "Science", "color": "bright_cyan", "text": "Quantum superposition: particles exist in multiple states simultaneously until measured. Observing a quantum system necessarily disturbs it."},
+    {"tag": "Science", "color": "bright_cyan", "text": "The placebo effect works even in surgery — multiple sham knee operations have produced the same patient-reported outcomes as real procedures."},
+    {"tag": "Science", "color": "bright_cyan", "text": "Ferrofluid forms elaborate spiky patterns in a magnetic field due to the Rosensweig instability — competing magnetic and gravitational forces."},
+    {"tag": "Science", "color": "bright_cyan", "text": "The human eye can theoretically detect a single photon in complete darkness — the brain usually filters them out as noise."},
+    {"tag": "Science", "color": "bright_cyan", "text": "The coldest natural temperature ever recorded on Earth was −89.2°C (−128.6°F) at Vostok Station, Antarctica, in 1983."},
+    {"tag": "Science", "color": "bright_cyan", "text": "Sound can travel through steel at ~5,100 m/s — about 15 times faster than through air at sea level."},
+    {"tag": "Science", "color": "bright_cyan", "text": "The electric eel is not actually an eel — it's more closely related to carp. It can generate up to 860 volts."},
+]
+
+# ── Extra Food / Life ─────────────────────────────────────────────────────
+_LOCAL_FACTS += [
+    {"tag": "Food Science", "color": "bright_yellow", "text": "Coffee trees can live over 100 years and produce fruit ('coffee cherries') for most of their adult lives."},
+    {"tag": "Food Science", "color": "bright_yellow", "text": "The difference between white and brown sugar is simply molasses content — chemically they're identical sucrose."},
+    {"tag": "Food Science", "color": "bright_yellow", "text": "Dark chocolate (~72% cacao) has been shown to measurably increase blood flow to the brain and improve short-term memory."},
+    {"tag": "Food Science", "color": "bright_yellow", "text": "Chocolate was consumed as a bitter, spicy drink by Mesoamerican civilizations for ~3,500 years before Europeans added sugar."},
+    {"tag": "Food Science", "color": "bright_yellow", "text": "Gluten doesn't exist in flour — it forms when water is added and two proteins (glutenin and gliadin) are kneaded together."},
+    {"tag": "Food Science", "color": "bright_yellow", "text": "The human tongue has about 10,000 taste buds, which are completely replaced every 10–14 days — taste literally renews itself."},
+    {"tag": "Food Science", "color": "bright_yellow", "text": "Eating asparagus produces a detectable sulphur compound in urine within 15–30 minutes — but only ~40% of people can smell it."},
+    {"tag": "Food Science", "color": "bright_yellow", "text": "Almonds are not tree nuts — they're the seed of a drupe fruit, closely related to peaches and cherries."},
+    {"tag": "Food Science", "color": "bright_yellow", "text": "The world's most expensive coffee, Kopi Luwak, is made from beans that have passed through the digestive system of Asian palm civets."},
+    {"tag": "Food Science", "color": "bright_yellow", "text": "Bread mold (Penicillium) is a different genus from the Penicillium that produces penicillin, though both are in the same family."},
+]
+
+# ── Extra Cool / Misc ──────────────────────────────────────────────────────
+_LOCAL_FACTS += [
+    {"tag": "Cool Fact", "color": "bright_blue", "text": "The Hollywood sign originally read 'Hollywoodland' — built in 1923 to advertise a real estate development. The 'land' was removed in 1949."},
+    {"tag": "Cool Fact", "color": "bright_blue", "text": "A regulation soccer ball has 32 panels — 20 hexagons and 12 pentagons, following the geometry of a truncated icosahedron."},
+    {"tag": "Cool Fact", "color": "bright_blue", "text": "IKEA names products systematically: sofas after Swedish towns, beds after Norwegian places, bookcases after professions."},
+    {"tag": "Cool Fact", "color": "bright_blue", "text": "The inventor of the frisbee, Walter Frederick Morrison, requested that his ashes be made into a frisbee after his death — his family obliged."},
+    {"tag": "Cool Fact", "color": "bright_blue", "text": "A violin is made from ~70 individual pieces of wood, mainly spruce (top) and maple (back and sides), and takes a master luthier months to build."},
+    {"tag": "Cool Fact", "color": "bright_blue", "text": "The word 'nerd' was first used by Dr. Seuss in 'If I Ran the Zoo' (1950) — decades before it became a cultural label."},
+    {"tag": "Cool Fact", "color": "bright_blue", "text": "The first ATM was installed by Barclays Bank in London on June 27, 1967. The first user reportedly withdrew money to buy booze for a fishing trip."},
+    {"tag": "Cool Fact", "color": "bright_blue", "text": "A murmuration of starlings — thousands of birds flying in coordinated waves — emerges from each bird tracking just its 6–7 nearest neighbors."},
+    {"tag": "Cool Fact", "color": "bright_blue", "text": "The tallest living tree, a coast redwood in California nicknamed Hyperion, stands 115.92 meters tall — taller than the Statue of Liberty with pedestal."},
+    {"tag": "Cool Fact", "color": "bright_blue", "text": "Fibonacci's 1202 book 'Liber Abaci' introduced Hindu-Arabic numerals (0–9) to Europe, replacing the cumbersome Roman numeral system."},
+    {"tag": "Cool Fact", "color": "bright_blue", "text": "The typewriter was one of the first machines that allowed women to earn an office income — opening professional employment to millions."},
+    {"tag": "Cool Fact", "color": "bright_blue", "text": "A 'parsec' is the distance at which 1 AU subtends 1 arcsecond — about 3.26 light-years. Han Solo's Kessel Run line is technically about navigation shortcutting."},
+    {"tag": "Cool Fact", "color": "bright_blue", "text": "The Eiffel Tower is 15–17 cm taller in summer — thermal expansion of its 7,300 tonnes of iron."},
+    {"tag": "Cool Fact", "color": "bright_blue", "text": "The Great Barrier Reef is the largest living structure on Earth and is visible from space."},
+    {"tag": "Cool Fact", "color": "bright_blue", "text": "A bolt of lightning contains about 5 billion joules of energy — enough to toast roughly 100,000 slices of bread."},
+    {"tag": "Cool Fact", "color": "bright_blue", "text": "There are more possible games of chess (10¹²⁰) than atoms in the observable universe (10⁸⁰) — by 40 orders of magnitude."},
+    {"tag": "Cool Fact", "color": "bright_blue", "text": "The 'Overview Effect' — a profound sense of Earth's fragility and humanity's unity — is reported by virtually every astronaut after seeing Earth from orbit."},
+    {"tag": "Cool Fact", "color": "bright_blue", "text": "Oxford University has been continuously operating since ~1096 AD — over 900 years of uninterrupted education."},
+    {"tag": "Cool Fact", "color": "bright_blue", "text": "Cats are one of the few animals that don't need to tilt their head back to swallow — they can eat and drink in any orientation."},
+    {"tag": "Cool Fact", "color": "bright_blue", "text": "The total length of all roads on Earth, if laid in a line, would stretch from Earth to the Sun and back 38 times."},
+]
+
+# ── Final batch to reach 500+ ─────────────────────────────────────────────
+_LOCAL_FACTS += [
+    {"tag": "Physics", "color": "yellow", "text": "The 'twin paradox': if one twin travels near the speed of light and returns, they will genuinely be younger than the twin who stayed on Earth."},
+    {"tag": "Physics", "color": "yellow", "text": "All matter is mostly empty space. If you removed all the empty space from every atom in a human, the result would be smaller than a grain of sand."},
+    {"tag": "Physics", "color": "yellow", "text": "Quantum entanglement was called 'spooky action at a distance' by Einstein, who believed it proved quantum mechanics was incomplete. Experiments since have proven him wrong."},
+    {"tag": "Physics", "color": "yellow", "text": "The Mpemba effect: hot water sometimes freezes faster than cold water — still not fully explained, but observed experimentally."},
+    {"tag": "Physics", "color": "yellow", "text": "A laser beam is the most directional light source we know — a laser pointed at the Moon would spread to only ~6.5 km diameter after 384,000 km."},
+    {"tag": "AI & ML", "color": "bright_yellow", "text": "The 'perceptron' (Rosenblatt, 1958) was hyped as the beginning of artificial general intelligence — funding collapsed when its limitations became clear in 1969."},
+    {"tag": "AI & ML", "color": "bright_yellow", "text": "GPT-3 (2020) has 175 billion parameters. When asked to explain itself, it generates plausible-sounding text — but has no actual understanding of meaning."},
+    {"tag": "AI & ML", "color": "bright_yellow", "text": "Diffusion models (behind DALL-E, Stable Diffusion) work by learning to reverse a process that gradually adds noise to images."},
+    {"tag": "AI & ML", "color": "bright_yellow", "text": "A single A100 GPU used for AI training consumes ~400 watts — roughly the same as a small clothes dryer running continuously."},
+    {"tag": "AI & ML", "color": "bright_yellow", "text": "The 'alignment problem' in AI: ensuring that as AI becomes more capable, its goals remain aligned with human values — considered by many researchers to be the hardest open problem."},
+    {"tag": "Debug Wisdom", "color": "red", "text": "Print statements have solved more production bugs than any debugger in history. The debugger is for finding the bug; print statements are for understanding why you thought it wasn't a bug."},
+    {"tag": "Debug Wisdom", "color": "red", "text": "'Make it work, make it right, make it fast.' — in that order. Premature optimization is the root of all evil. — Donald Knuth"},
+    {"tag": "Debug Wisdom", "color": "red", "text": "The most effective debugging technique is explaining your code to a rubber duck. The duck asks no questions but somehow you find the bug mid-sentence."},
+    {"tag": "Debug Wisdom", "color": "red", "text": "Every variable name you have to re-read to understand is a comment you didn't write."},
+    {"tag": "Debug Wisdom", "color": "red", "text": "The second system effect (Fred Brooks): the second version of software is often over-engineered, bloated, and delayed — designers overcompensate for the first system's constraints."},
+    {"tag": "Language", "color": "bright_green", "text": "The word 'salary' comes from Latin 'salarium.' Roman soldiers may have been paid in salt, or given an allowance to buy it — either way, salt was literally money."},
+    {"tag": "Language", "color": "bright_green", "text": "English has borrowed the word 'coffee' from Turkish 'kahve,' from Arabic 'qahwa,' possibly originally meaning 'wine of the bean.'"},
+    {"tag": "Language", "color": "bright_green", "text": "The longest word in major English dictionaries is 'pneumonoultramicroscopicsilicovolcanoconiosis' — a lung disease caused by inhaling very fine silica dust."},
+    {"tag": "Language", "color": "bright_green", "text": "'Serendipity' was invented by Horace Walpole in 1754, based on a Persian fairy tale 'The Three Princes of Serendip' — ancient name for Sri Lanka."},
+    {"tag": "Language", "color": "bright_green", "text": "The average English speaker knows ~20,000–35,000 words actively; passive vocabulary (words understood but rarely used) is often double that."},
+    {"tag": "History", "color": "yellow", "text": "The Great Wall of China was not built all at once — it was constructed, rebuilt, and extended over ~2,000 years by multiple dynasties."},
+    {"tag": "History", "color": "yellow", "text": "The word 'dinosaur' was coined by Richard Owen in 1842 — before that, their fossils were interpreted as giant human remains or dragon bones."},
+    {"tag": "History", "color": "yellow", "text": "Isaac Newton was so shy that he nearly didn't publish Principia Mathematica — Edmund Halley (of comet fame) had to personally fund and encourage the publication."},
+    {"tag": "History", "color": "yellow", "text": "The 20th century was the deadliest in human history — over 100 million people died in wars, compared to ~19 million in the 19th century."},
+    {"tag": "History", "color": "yellow", "text": "Beethoven was almost completely deaf when he composed his Ninth Symphony — he reportedly had to feel the vibrations through the piano to hear it."},
+    {"tag": "Human Body", "color": "bright_red", "text": "The human eye can distinguish approximately 10 million distinct colors — but has only 3 types of color receptors (red, green, blue cone cells)."},
+    {"tag": "Human Body", "color": "bright_red", "text": "Red blood cells complete a full circuit of the human body in approximately 20 seconds, traveling ~5 liters of blood."},
+    {"tag": "Human Body", "color": "bright_red", "text": "The pinky finger contributes ~50% of a hand's gripping strength. Losing it would be more debilitating than losing the ring finger."},
+    {"tag": "Human Body", "color": "bright_red", "text": "Fingernails grow ~3.5 mm/month; toenails ~1.5 mm/month. Nails grow faster in summer, on the dominant hand, and on the longest fingers."},
+    {"tag": "Human Body", "color": "bright_red", "text": "The body produces a fresh stomach lining every 3–5 days to avoid being digested by its own acid."},
+    {"tag": "Economy", "color": "bright_cyan", "text": "The Pareto Principle (80/20 rule) applies across an extraordinary range of domains: 80% of wealth held by 20% of people, 80% of bugs caused by 20% of code, and so on."},
+    {"tag": "Economy", "color": "bright_cyan", "text": "Compound interest was called 'the eighth wonder of the world' — small consistent returns, reinvested over decades, produce startling results."},
+    {"tag": "Economy", "color": "bright_cyan", "text": "The first stock market crash — Tulip Mania in 1637 — saw Dutch tulip bulb prices collapse to near zero after speculation drove them to absurd heights."},
+    {"tag": "Economy", "color": "bright_cyan", "text": "High-frequency trading accounts for ~50% of all US stock market volume — algorithms executing trades in microseconds, exploiting tiny price discrepancies."},
+    {"tag": "Economy", "color": "bright_cyan", "text": "The GDP of the entire global economy is roughly $100 trillion per year. Amazon's annual revenue (~$500B) would make it the 24th largest 'country' by GDP."},
+    {"tag": "Philosophy", "color": "magenta", "text": "Bertrand Russell's teapot: the burden of proof lies with whoever makes a positive claim. You can't disprove an unfalsifiable assertion — which isn't the same as it being true."},
+    {"tag": "Philosophy", "color": "magenta", "text": "Plato's Allegory of the Cave (380 BC): prisoners mistake shadows on a wall for reality — a metaphor for how limited perception can be mistaken for complete knowledge."},
+    {"tag": "Philosophy", "color": "magenta", "text": "Dunbar's number (~150): the cognitive limit to the number of stable social relationships a human can maintain — consistent across hunter-gatherer groups, Roman army units, and offices."},
+    {"tag": "Philosophy", "color": "magenta", "text": "Pascal's Wager (1670): the first formal decision-theory argument in history — framing belief in God as a rational bet under uncertainty about infinite stakes."},
+    {"tag": "Environment", "color": "green", "text": "The Great Pacific Garbage Patch is roughly twice the size of Texas — but it's primarily microplastics suspended in the water column, not a floating island."},
+    {"tag": "Environment", "color": "green", "text": "Reintroducing just 14 wolves to Yellowstone in 1995 triggered a 'trophic cascade' that eventually changed the course of rivers by stabilizing riverbanks through vegetation regrowth."},
+    {"tag": "Environment", "color": "green", "text": "The ocean absorbs ~25% of all CO₂ emitted by humans each year, and ~90% of the excess heat trapped by greenhouse gases."},
+    {"tag": "Crypto & Sec", "color": "red", "text": "HTTPS encrypts your browser traffic using the same mathematical principles that secure trillion-dollar financial transactions."},
+    {"tag": "Crypto & Sec", "color": "red", "text": "A 256-bit AES key has 2²⁵⁶ possible combinations. Brute-forcing it with every atom in the universe as a computer would take longer than the age of the universe."},
+    {"tag": "Crypto & Sec", "color": "red", "text": "Social engineering (manipulating people, not systems) is responsible for ~82% of data breaches — the human is usually the weakest link."},
+    {"tag": "Math", "color": "cyan", "text": "Euler's identity, e^(iπ) + 1 = 0, combines the five most important constants in mathematics. Feynman called it 'the most remarkable formula in mathematics.'"},
+    {"tag": "Math", "color": "cyan", "text": "The number of atoms in the observable universe is estimated at ~10⁸⁰ — but the number of possible sudoku grids is ~6.7×10²¹, and the number of chess games is ~10¹²⁰."},
+    {"tag": "Math", "color": "cyan", "text": "Fermat's Last Theorem (proposed 1637) was proven by Andrew Wiles in 1995 — after 358 years and a proof that took 7 years and filled 100+ pages."},
+    {"tag": "Software", "color": "green", "text": "The average developer introduces approximately 70 bugs per 1,000 lines of code — even experienced engineers produce 15–50."},
+    {"tag": "Software", "color": "green", "text": "Dijkstra's shortest path algorithm (1956) is used billions of times daily in GPS navigation, internet routing, and network protocols."},
+    {"tag": "Software", "color": "green", "text": "The 'Unix philosophy': write programs that do one thing well, write programs to work together, write programs that handle text streams."},
+    {"tag": "Software", "color": "green", "text": "The word 'pixel' is a portmanteau of 'picture element,' coined in the 1960s by Frederic Billingsley at JPL for image data from space probes."},
+    {"tag": "Software", "color": "green", "text": "The first version of Doom (1993) was so well-optimized that id Software ran it on a NeXT workstation — and it ran faster than the engine that powered it."},
+    {"tag": "Cool Fact", "color": "bright_blue", "text": "The 'Dead Hand' (Perimeter) system in Russia can automatically launch nuclear missiles if it detects a nuclear strike and loses contact with command — it may still be active."},
+    {"tag": "Cool Fact", "color": "bright_blue", "text": "Switzerland has enough nuclear bunkers to shelter its entire population. Every building over a certain size is legally required to include a bunker."},
+    {"tag": "Cool Fact", "color": "bright_blue", "text": "Clocks in the UK run ahead of Greenwich Mean Time in summer (BST) — even though the Royal Observatory in Greenwich is in London."},
+    {"tag": "Cool Fact", "color": "bright_blue", "text": "The electric chair was invented by a dentist (Alfred Southwick) in 1881, after he witnessed a painless-seeming accidental electrocution at a power station."},
+    {"tag": "Cool Fact", "color": "bright_blue", "text": "A group of cats is called a 'clowder.' A group of kittens is a 'kindle.' A group of cats knocking things off tables is called 'Tuesday.'"},
+    {"tag": "Biology", "color": "bright_green", "text": "The platypus is one of the only mammals that lays eggs, uses electroreception to hunt, produces venom (males), and has 10 sex chromosomes instead of 2."},
+    {"tag": "Biology", "color": "bright_green", "text": "Trees can 'scream' — when drought-stressed, ultrasonic vibrations from cavitating water columns are detectable with sensitive microphones."},
+    {"tag": "Biology", "color": "bright_green", "text": "The Humboldt squid can change color 20 times per second, use its arms to communicate, and coordinate hunts — despite having no centralized brain region for language."},
+    {"tag": "Biology", "color": "bright_green", "text": "The bombardier beetle ejects a boiling-hot (100°C) chemical spray from its abdomen in rapid pulses — a reaction between hydroquinone and hydrogen peroxide."},
+    {"tag": "Space", "color": "bright_magenta", "text": "The Moon has a slight 'wobble' called libration that lets us see about 59% of its surface over time — not just the 50% directly facing us."},
+    {"tag": "Space", "color": "bright_magenta", "text": "Pluto was discovered in 1930, reclassified as a 'dwarf planet' in 2006, and has never completed a full orbit of the Sun since it was discovered — its year is 248 Earth years."},
+    {"tag": "Space", "color": "bright_magenta", "text": "Betelgeuse, a red supergiant in Orion's Belt, is expected to go supernova sometime in the next 100,000 years — it could be visible in daylight."},
+    {"tag": "Hardware", "color": "bright_blue", "text": "The Raspberry Pi (2012) was designed to teach children programming for ~$35. It has sold over 40 million units and is now used in industrial systems worldwide."},
+    {"tag": "Hardware", "color": "bright_blue", "text": "A typical smartphone contains over 60 different chemical elements — including gold, silver, platinum, palladium, and rare earth metals."},
+    {"tag": "CS History", "color": "cyan", "text": "The first computer virus designed to spread on the internet, the Morris Worm (1988), infected ~6,000 machines — then ~10% of the entire internet."},
+    {"tag": "CS History", "color": "cyan", "text": "Bill Gates wrote his first program at age 13 — a tic-tac-toe game on a GE mainframe at Lakeside School, Seattle, in 1968."},
+    {"tag": "CS History", "color": "cyan", "text": "The first version of Netscape Navigator (1994) gave the public its first real graphical web browser — within a year, it had 75% of the browser market."},
+    {"tag": "CS History", "color": "cyan", "text": "The concept of a 'stored-program computer' — where programs are data in memory — was independently conceived by Turing, von Neumann, and others in 1945."},
+    {"tag": "CS History", "color": "cyan", "text": "Grace Hopper invented the first compiler in 1952. Her colleagues initially didn't believe a computer could 'write its own programs.'"},
+]
+
+# ── Topping up to 505+ ────────────────────────────────────────────────────
+_LOCAL_FACTS += [
+    {"tag": "Economy", "color": "bright_cyan", "text": "The global debt-to-GDP ratio exceeded 350% in 2023 — meaning humanity owes itself 3.5× more than it produces in a year."},
+    {"tag": "Economy", "color": "bright_cyan", "text": "Microfinance — small loans to entrepreneurs in developing countries — was pioneered by Muhammad Yunus, earning him the 2006 Nobel Peace Prize."},
+    {"tag": "Economy", "color": "bright_cyan", "text": "The invisible hand (Adam Smith, 1776) describes how individuals pursuing self-interest can inadvertently benefit society through market mechanisms."},
+    {"tag": "Economy", "color": "bright_cyan", "text": "Veblen goods are luxury items where demand increases as price rises — a counterexample to normal supply-demand curves."},
+    {"tag": "Economy", "color": "bright_cyan", "text": "Bitcoin mining globally uses roughly as much electricity as Poland — yet processes fewer transactions per second than a single Visa data center."},
+    {"tag": "Geography", "color": "green", "text": "The border between Belgium and the Netherlands runs through the middle of a café in Baarle-Hertog — the table placement determines which country you're eating in."},
+    {"tag": "Geography", "color": "green", "text": "Point Nemo in the Pacific Ocean is the most remote location on Earth — the nearest humans are often astronauts on the ISS, ~400 km overhead."},
+    {"tag": "Crypto & Sec", "color": "red", "text": "The Diffie-Hellman key exchange (1976) solved a fundamental problem: two parties can establish a shared secret over a public channel without ever meeting privately."},
+    {"tag": "Crypto & Sec", "color": "red", "text": "bcrypt, the most widely used password hashing algorithm, was designed in 1999 to be deliberately slow — making brute-force attacks computationally expensive."},
+    {"tag": "Crypto & Sec", "color": "red", "text": "The NSA's PRISM program, revealed by Snowden in 2013, collected data directly from the servers of Apple, Google, Facebook, and others."},
+    {"tag": "Philosophy", "color": "magenta", "text": "The Turing Test has technically been 'passed' multiple times since 2014 — but each time, the bar is raised. We keep moving the goalposts as AI improves."},
+    {"tag": "Philosophy", "color": "magenta", "text": "Fermi's Paradox: if intelligent life is statistically likely in the universe, why haven't we detected any? The silence itself is profound."},
+    {"tag": "Philosophy", "color": "magenta", "text": "The simulation hypothesis (Bostrom, 2003): if advanced civilizations run ancestor simulations, the probability that we're in the 'base reality' is vanishingly small."},
+    {"tag": "Science", "color": "bright_cyan", "text": "Water is one of the most unusual substances in the universe — its high surface tension, solvent properties, density anomaly at 4°C, and solid being less dense than liquid are all deeply weird."},
+    {"tag": "Science", "color": "bright_cyan", "text": "The 'measurement problem' in quantum mechanics: quantum systems don't have definite properties until measured. What counts as a 'measurement'? After 100 years, there's still no consensus."},
+]
+
+# Shuffle the local pool once at import time so every run has a different order
+random.shuffle(_LOCAL_FACTS)
+
+# ---------------------------------------------------------------------------
+# Shared pool — starts with local facts, online facts are appended
+# ---------------------------------------------------------------------------
+
+_fact_pool: list[dict] = list(_LOCAL_FACTS)
+_pool_lock = threading.Lock()
+
+
+def start_online_fetch() -> None:
+    """Kick off a background thread that fetches online facts (best-effort)."""
+
+    def _worker() -> None:
+        import time as _time
+        new_facts: list[dict] = []
+
+        # ── Wikipedia On This Day ─────────────────────────────────────
+        try:
+            now = datetime.now()
+            url = (
+                f"https://en.wikipedia.org/api/rest_v1/feed/onthisday"
+                f"/events/{now.month}/{now.day}"
+            )
+            req = Request(url, headers={"User-Agent": "pulsar-dashboard/0.1"})
+            with urlopen(req, timeout=6) as resp:
+                data = json.loads(resp.read())
+            events = data.get("events", [])
+            random.shuffle(events)
+            for ev in events[:8]:
+                year = ev.get("year", "")
+                text = ev.get("text", "").strip()
+                if text and year:
+                    new_facts.append({
+                        "tag": "Today in History",
+                        "color": "yellow",
+                        "text": f"{year} — {text}",
+                    })
+        except Exception:
+            pass
+
+        # ── Useless Facts API ─────────────────────────────────────────
+        try:
+            for _ in range(6):
+                req = Request(
+                    "https://uselessfacts.jsph.pl/api/v2/facts/random",
+                    headers={"User-Agent": "pulsar-dashboard/0.1"},
+                )
+                with urlopen(req, timeout=5) as resp:
+                    data = json.loads(resp.read())
+                text = data.get("text", "").strip()
+                if text:
+                    new_facts.append({
+                        "tag": "Fun Fact",
+                        "color": "bright_magenta",
+                        "text": text,
+                    })
+                _time.sleep(0.4)
+        except Exception:
+            pass
+
+        if new_facts:
+            with _pool_lock:
+                _fact_pool.extend(new_facts)
+                random.shuffle(_fact_pool)
+
+    threading.Thread(target=_worker, daemon=True).start()
+
+
+def get_fact(index: int) -> dict:
+    """Return the fact at position *index* (wraps around the pool)."""
+    with _pool_lock:
+        return _fact_pool[index % len(_fact_pool)]
+
+
+def pool_size() -> int:
+    """Current number of facts in the pool."""
+    with _pool_lock:
+        return len(_fact_pool)
